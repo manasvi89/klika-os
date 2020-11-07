@@ -41,6 +41,7 @@ typedef struct task_struct {
   uint16_t attribute;
   uint16_t state;
   uint8_t *kstack;
+    uint16_t priority;
   // uint8_t kstack[KERNEL_STACK_SIZE];
   // For now we are supporting only 2MB programs :) 
   // We keep track of one entry in PDE that will be mapped to 0x0000000 (user program space)

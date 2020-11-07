@@ -218,7 +218,7 @@ task_t* create_kernel_process(void* entry_point) {
   task->id = __task_ids++;
   task->attribute = PROCESS_ATTR_KERNEL_SPACE;
   task->state = PROCESS_STATE_READY;
-
+  task->priority = 0;
   DEBUG("PROC: Kernel task created : x%X) entry:0x%X rsp:0x%X\n", entry_point, task->rsp);
   task_list_insert(task);
 
@@ -264,6 +264,7 @@ task_t* create_user_process(void* elf_raw_data) {
   task->attribute = PROCESS_ATTR_USER_SPACE;
   task->state = PROCESS_STATE_READY;
   task->pde[0].all = phys_addr |  PAGE_PRESENT_CPL3; // Present + Write + CPL3
+  task->priority = 0;
 
   DEBUG("PROC: Task created : tm0: 0x%X (p:0x%X) rsp:0x%X\n", task_memory, phys_addr, task->rsp);
   task_list_insert(task);
@@ -303,6 +304,7 @@ task_t *create_user_process_clone(task_t *parent, uint64_t entry_point, uint64_t
   // have same pagging mapping as parent (same memory space)
   task->pde = parent->pde;
   task->parent = parent;
+  task->priority = 0;
 
   DEBUG("PROC: Child Task created : parent id: %i, rsp:0x%X\n", parent->id, task->rsp);
   task_list_insert(task);
@@ -388,23 +390,57 @@ task_t* current_task() {
 
 task_t* next_task() {
   task_t* task = task_list_current;
+  task_t* task1 = task_list_head;
+  uint16_t tmp=80;
+ 
   do {
     task = task->next;
+  //  DEBUG("\n id of last:%i\n",task->id);
     if (task == NULL) {
       task = task_list_head;
+   //   DEBUG("\nNULL if condition  , id:%i\n",task->id);
     }
-  } while(task->state == PROCESS_STATE_WAIT);
-  task_list_current = task;
-  return task;
+    if(task->priority <= tmp){
+         task1 = task;
+         tmp = task1->priority;
+     //          DEBUG("\nAnother if condition,  id:%i\n",task->id);
+       //        DEBUG("\n tmp: %i\n",tmp);
+    } 
+    
+    //if((task_list_current->priority >= task->priority) && (task->state != PROCESS_STATE_WAIT)){
+       //       DEBUG("High Priority\n");
+      //    return task;      
+    //}
+    
+  } while(task!=task_list_last);
+ // if(task_list_current->priority > task->priority){
+    //     DEBUG("Higher priority switch\n");
+  //}
+  //task_list_current = task;
+  return task1;
 }
 
 void __switch_to(task_t* next) {
+
+  // if(task_list_current->priority < next->priority){
+   //            next = task_list_current;
+   //}
   // Set TSS stack pointer for interrupt return
   tss64.rsp0 = (uint64_t)(next->kstack + KERNEL_STACK_SIZE - 8);
   // Change states. Is this best moment?
   task_list_current->state = PROCESS_STATE_READY;
+  if((task_list_current->id !=0 && task_list_current->id !=1) && (task_list_current->priority<80)){
+        task_list_current->priority = task_list_current->priority +1;
+  }
+  else if((task_list_current->id !=0 && task_list_current->id !=1) && (task_list_current->priority>=80)){
+        task_list_current->priority = 0; 
+  }
+  DEBUG("Process Switch has occured:%i\n",task_list_current->id);
+  DEBUG("Current process:%i   Priority:%i\n",task_list_current->id,task_list_current->priority);
   next->state = PROCESS_STATE_RUNNING;
-  
+   task_list_current = next;
+  DEBUG("Next Process:%i  Priority:%i\n",task_list_current->id,task_list_current->priority);
+
   if (next->attribute & PROCESS_ATTR_USER_SPACE) {
     // Copy user tables
     memcpy(pde_user, next->pde, 512 * sizeof(pde_t));
